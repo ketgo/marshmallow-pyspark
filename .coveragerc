@@ -1,0 +1,9 @@
+[report]
+exclude_lines =
+    pragma: no cover
+    raise NotImplementedError
+omit =
+    setup.py
+    ./venv/*
+    ./pyabac/version.py
+    ./benchmarks/*
