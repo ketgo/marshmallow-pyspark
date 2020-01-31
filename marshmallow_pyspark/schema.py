@@ -5,13 +5,14 @@
 import json
 from typing import *
 
-from marshmallow import Schema as ma_Schema, ValidationError
+from marshmallow import Schema as ma_Schema, fields as ma_fields, ValidationError
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import udf, struct
-from pyspark.sql.types import *
+from pyspark.sql.types import StructType, StructField, StringType
 
 from .constants import *
-from .converter import Converter
+from .converters import (ConverterABC, StringConverter, DateTimeConverter, DateConverter, BooleanConverter,
+                         IntegerConverter, NumberConverter, ListConverter, DictConverter, NestedConverter)
 
 
 class Schema(ma_Schema):
@@ -25,8 +26,18 @@ class Schema(ma_Schema):
         :param *args, **kwargs: arguments passed to marshmallow schema class
     """
 
-    # Field converter used in creating spark schema
-    _converter = Converter()
+    # Map of marshmallow field types and corresponding converters
+    CONVERTER_MAP: Mapping[Type[ma_fields.Field], Type[ConverterABC]] = {
+        ma_fields.String: StringConverter,
+        ma_fields.DateTime: DateTimeConverter,
+        ma_fields.Date: DateConverter,
+        ma_fields.Boolean: BooleanConverter,
+        ma_fields.Integer: IntegerConverter,
+        ma_fields.Number: NumberConverter,
+        ma_fields.List: ListConverter,
+        ma_fields.Dict: DictConverter,
+        ma_fields.Nested: NestedConverter,
+    }
 
     def __init__(
             self,
@@ -48,7 +59,8 @@ class Schema(ma_Schema):
         """
         fields = []
         for field_name, ma_field in self._declared_fields.items():
-            fields.append(StructField(field_name, self._converter.convert(ma_field), nullable=True))
+            field_converter = self.CONVERTER_MAP.get(type(ma_field), StringConverter)
+            fields.append(StructField(field_name, field_converter(self.CONVERTER_MAP).convert(ma_field), nullable=True))
         # Adding error column field
         if self.error_column_name:
             fields.append(StructField(self.error_column_name, StringType(), nullable=True))

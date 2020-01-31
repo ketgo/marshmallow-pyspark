@@ -2,13 +2,38 @@
     Marshmallow fields to pyspark sql type converter
 """
 
+from abc import ABCMeta, abstractmethod
 from typing import Mapping, Type
 
-from marshmallow import fields
-from marshmallow.fields import Field
+from marshmallow import fields as ma_fields
 from pyspark.sql.types import *
 
-from .base import ConverterABC
+
+class ConverterABC(metaclass=ABCMeta):
+    """
+        Abstract base class for converter
+
+        :param converter_map: mapping between marshmallow field and
+            corresponding converter. Primarily used by nested composite
+            fields like list, mapping, etc.
+    """
+
+    def __init__(self, converter_map: Mapping[Type[ma_fields.Field], Type["ConverterABC"]]):
+        self._converter_map = converter_map
+
+    @property
+    def converter_map(self) -> Mapping[Type[ma_fields.Field], Type["ConverterABC"]]:
+        return self._converter_map
+
+    @abstractmethod
+    def convert(self, ma_field: ma_fields.Field) -> DataType:
+        """
+            Convert marshmallow field to spark data type.
+
+            :param ma_field: marshmallow field instance
+            :return: spark SQL data type instance
+        """
+        raise NotImplementedError()
 
 
 class StringConverter(ConverterABC):
@@ -16,7 +41,7 @@ class StringConverter(ConverterABC):
         String field converter
     """
 
-    def convert(self, ma_field: Field) -> DataType:
+    def convert(self, ma_field: ma_fields.Field) -> DataType:
         return StringType()
 
 
@@ -25,7 +50,7 @@ class DateTimeConverter(ConverterABC):
         DateTime field converter
     """
 
-    def convert(self, ma_field: Field) -> DataType:
+    def convert(self, ma_field: ma_fields.Field) -> DataType:
         return TimestampType()
 
 
@@ -34,7 +59,7 @@ class DateConverter(ConverterABC):
         Date field converter
     """
 
-    def convert(self, ma_field: Field) -> DataType:
+    def convert(self, ma_field: ma_fields.Field) -> DataType:
         return DateType()
 
 
@@ -43,7 +68,7 @@ class BooleanConverter(ConverterABC):
         Boolean field converter
     """
 
-    def convert(self, ma_field: Field) -> DataType:
+    def convert(self, ma_field: ma_fields.Field) -> DataType:
         return BooleanType()
 
 
@@ -52,7 +77,7 @@ class IntegerConverter(ConverterABC):
         Integer field converter
     """
 
-    def convert(self, ma_field: Field) -> DataType:
+    def convert(self, ma_field: ma_fields.Field) -> DataType:
         return IntegerType()
 
 
@@ -61,7 +86,7 @@ class NumberConverter(ConverterABC):
         Number field converter
     """
 
-    def convert(self, ma_field: Field) -> DataType:
+    def convert(self, ma_field: ma_fields.Field) -> DataType:
         return FloatType()
 
 
@@ -70,7 +95,7 @@ class ListConverter(ConverterABC):
         List field converter
     """
 
-    def convert(self, ma_field: fields.List) -> DataType:
+    def convert(self, ma_field: ma_fields.List) -> DataType:
         inner_converter = self.converter_map.get(type(ma_field.inner), StringConverter)
         return ArrayType(inner_converter(self.converter_map).convert(ma_field.inner))
 
@@ -80,7 +105,7 @@ class DictConverter(ConverterABC):
         Dict field converter
     """
 
-    def convert(self, ma_field: fields.Dict) -> DataType:
+    def convert(self, ma_field: ma_fields.Dict) -> DataType:
         key_field_converter = self.converter_map.get(type(ma_field.key_field), StringConverter)
         value_field_converter = self.converter_map.get(type(ma_field.value_field), StringConverter)
         return MapType(
@@ -94,7 +119,7 @@ class NestedConverter(ConverterABC):
         Nested field converter
     """
 
-    def convert(self, ma_field: fields.Nested) -> DataType:
+    def convert(self, ma_field: ma_fields.Nested) -> DataType:
         _fields = []
         for field_name, nested_field in ma_field.schema._declared_fields.items():
             field_converter = self.converter_map.get(type(nested_field), StringConverter)
@@ -102,25 +127,3 @@ class NestedConverter(ConverterABC):
                 StructField(field_name, field_converter(self.converter_map).convert(nested_field), nullable=True)
             )
         return StructType(_fields)
-
-
-class Converter:
-    """
-        Marshmallow fields to pyspark sql type converter
-    """
-    # Map of marshmallow field types and corresponding converters
-    CONVERTER_MAP: Mapping[Type[Field], Type[ConverterABC]] = {
-        fields.String: StringConverter,
-        fields.DateTime: DateTimeConverter,
-        fields.Date: DateConverter,
-        fields.Boolean: BooleanConverter,
-        fields.Integer: IntegerConverter,
-        fields.Number: NumberConverter,
-        fields.List: ListConverter,
-        fields.Dict: DictConverter,
-        fields.Nested: NestedConverter,
-    }
-
-    def convert(self, ma_field: Field) -> DataType:
-        converter = self.CONVERTER_MAP.get(type(ma_field), StringConverter)
-        return converter(self.CONVERTER_MAP).convert(ma_field)

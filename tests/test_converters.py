@@ -4,8 +4,33 @@
 
 import pytest
 from marshmallow import Schema
+from marshmallow import fields
 
-from marshmallow_pyspark.converter.converters import *
+from marshmallow_pyspark.converters import *
+from marshmallow_pyspark.schema import Schema
+
+
+class MockConverter(ConverterABC):
+
+    def convert(self, ma_field: fields.Field) -> DataType:
+        return StringType()
+
+
+def test_create():
+    converter_map = {
+        fields.String: MockConverter
+    }
+    converter = MockConverter(converter_map)
+
+    assert converter.converter_map == converter_map
+
+
+def test_convert():
+    converter_map = {
+        fields.String: MockConverter
+    }
+    converter = MockConverter(converter_map)
+    assert converter.convert(fields.String()) == StringType()
 
 
 @pytest.mark.parametrize("field_converter, ma_field, spark_type", [
@@ -25,20 +50,4 @@ from marshmallow_pyspark.converter.converters import *
     ),
 ])
 def test_field_converters(field_converter, ma_field, spark_type):
-    assert field_converter(Converter.CONVERTER_MAP).convert(ma_field) == spark_type
-
-
-@pytest.mark.parametrize("ma_field, spark_type", [
-    (fields.String(), StringType()),
-    (fields.DateTime(), TimestampType()),
-    (fields.Date(), DateType()),
-    (fields.Boolean(), BooleanType()),
-    (fields.Integer(), IntegerType()),
-    (fields.Number(), FloatType()),
-    (fields.List(fields.String()), ArrayType(StringType())),
-    (fields.Dict(), MapType(StringType(), StringType())),
-    (fields.Dict(fields.String(), fields.Number()), MapType(StringType(), FloatType())),
-    (fields.Nested(Schema.from_dict({"name": fields.String()})), StructType([StructField("name", StringType())]))
-])
-def test_converter(ma_field, spark_type):
-    assert Converter().convert(ma_field) == spark_type
+    assert field_converter(Schema.CONVERTER_MAP).convert(ma_field) == spark_type
