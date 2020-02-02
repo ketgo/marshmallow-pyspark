@@ -76,3 +76,5 @@ fabric.properties
 venv/*
 
 *.egg-info
+
+.coverage
