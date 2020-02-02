@@ -39,14 +39,6 @@ def test_spark_schema(ma_field, spark_field):
     schema = TestSchema()
     assert schema.spark_schema == spark_schema
 
-    spark_schema = StructType(
-        [
-            StructField("test_column", spark_field, nullable=True)
-        ]
-    )
-    schema = TestSchema(error_column_name=False)
-    assert schema.spark_schema == spark_schema
-
 
 @pytest.mark.parametrize("schema, input_data, valid_rows, invalid_rows", [
     (

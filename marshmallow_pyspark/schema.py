@@ -103,8 +103,7 @@ class Schema(ma_Schema):
             spark_field = field_converter(self.CONVERTER_MAP).convert(ma_field)
             fields.append(StructField(field_name, spark_field, nullable=True))
         # Adding error column field
-        if self.error_column_name:
-            fields.append(StructField(self.error_column_name, StringType(), nullable=True))
+        fields.append(StructField(self.error_column_name, StringType(), nullable=True))
 
         return StructType(fields)
 
