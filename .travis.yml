@@ -17,7 +17,10 @@ python:
 addons:
   apt:
     packages:
-      - oracle-java8-set-default
+      - addons:
+  apt:
+    packages:
+      - openjdk-8-jdk
 
 install:
   - make deps
