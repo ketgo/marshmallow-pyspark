@@ -17,10 +17,10 @@ python:
 addons:
   apt:
     packages:
-      - addons:
-  apt:
-    packages:
       - openjdk-8-jdk
+      
+env:
+  - JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
 
 install:
   - make deps
