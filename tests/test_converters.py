@@ -39,6 +39,7 @@ def test_convert():
     (DateConverter, fields.Date(), DateType()),
     (BooleanConverter, fields.Boolean(), BooleanType()),
     (IntegerConverter, fields.Integer(), IntegerType()),
+    (FloatConverter, fields.Float(), FloatType()),
     (NumberConverter, fields.Number(), FloatType()),
     (ListConverter, fields.List(fields.String()), ArrayType(StringType())),
     (DictConverter, fields.Dict(), MapType(StringType(), StringType())),

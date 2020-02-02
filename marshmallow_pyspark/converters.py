@@ -81,6 +81,15 @@ class IntegerConverter(ConverterABC):
         return IntegerType()
 
 
+class FloatConverter(ConverterABC):
+    """
+        Float field converter
+    """
+
+    def convert(self, ma_field: ma_fields.Field) -> DataType:
+        return FloatType()
+
+
 class NumberConverter(ConverterABC):
     """
         Number field converter
