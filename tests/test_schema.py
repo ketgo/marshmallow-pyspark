@@ -2,6 +2,8 @@
     Unit tests for Schema
 """
 
+import json
+
 import pytest
 from marshmallow import fields
 from pyspark.sql.types import *
@@ -14,6 +16,7 @@ def test_create():
     schema = Schema()
     assert schema.error_column_name == DEFAULT_ERRORS_COLUMN_NAME
     assert schema.split_errors == DEFAULT_SPLIT_INVALID_ROWS
+    assert schema.add_index_column == DEFAULT_ADD_INDEX_COLUMN
 
 
 @pytest.mark.parametrize("ma_field, spark_field", [
@@ -49,25 +52,27 @@ def test_spark_schema(ma_field, spark_field):
                 "employed": fields.Boolean(required=True)
             }),
             [
-                {"name": "valid_1", "age": "40", "expenses": "43.78", "employed": "True"},
-                {"name": "valid_2", "age": "32", "expenses": "30.50", "employed": "False"},
-                {"name": "invalid_2", "age": "32.05", "expenses": "30.50", "employed": "False"},
-                {"name": "invalid_3", "age": "32", "expenses": "30", "employed": "False"},
-                {"name": "invalid_4", "age": "32", "expenses": "30.50", "employed": "Fa"},
+                {"name": "valid_1", "age": "40", "expenses": "43.5", "employed": "True"},
+                {"name": "valid_2", "age": "32", "expenses": "30.5", "employed": "False"},
+                {"name": "invalid_2", "age": "32.05", "expenses": "30.5", "employed": "False"},
+                {"name": "invalid_3", "age": "32", "expenses": "thirty", "employed": "False"},
+                {"name": "invalid_4", "age": "32", "expenses": "30.5", "employed": "Fa"},
             ],
             [
-                {"name": "valid_1", "age": "40", "expenses": "43.78", "employed": "True"},
-                {"name": "valid_2", "age": "32", "expenses": "30.50", "employed": "False"},
+                {"name": "valid_1", "age": 40, "expenses": 43.5, "employed": True},
+                {"name": "valid_2", "age": 32, "expenses": 30.5, "employed": False},
             ],
             [
-                {"name": "invalid_2", "age": "32.05", "expenses": "30.50", "employed": "False"},
-                {"name": "invalid_3", "age": "32", "expenses": "30", "employed": "False"},
-                {"name": "invalid_4", "age": "32", "expenses": "30.50", "employed": "Fa"},
+                {"name": "invalid_2", "age": "32.05", "expenses": "30.5", "employed": "False"},
+                {"name": "invalid_3", "age": "32", "expenses": "thirty", "employed": "False"},
+                {"name": "invalid_4", "age": "32", "expenses": "30.5", "employed": "Fa"},
             ]
     ),
 ])
 def test_load_df(spark_session, schema, input_data, valid_rows, invalid_rows):
     input_df = spark_session.createDataFrame(input_data)
     valid_df, errors_df = schema().validate_df(input_df)
-    valid_df.show()
-    errors_df.show()
+    _valid_rows = [row.asDict(recursive=True) for row in valid_df.collect()]
+    assert _valid_rows == valid_rows
+    error_rows = [json.loads(row[DEFAULT_ERRORS_COLUMN_NAME]) for row in errors_df.collect()]
+    assert [row["row"] for row in error_rows] == invalid_rows

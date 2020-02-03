@@ -7,7 +7,7 @@ from typing import *
 
 from marshmallow import Schema as ma_Schema, fields as ma_fields, ValidationError
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import udf, struct
+from pyspark.sql.functions import udf, struct, monotonically_increasing_id
 from pyspark.sql.types import StructType, StructField, StringType
 
 from .constants import *
@@ -65,6 +65,9 @@ class Schema(ma_Schema):
             then set to `null`. For user convenience the original field values
             can be found in the `row` attribute of the error JSON.
             Default value is `True`.
+        :param add_index_column: adds index to each row in the data frame. This
+            parameter is useful in capturing the line number of the invalid rows
+            in the data files. Default value is `False`.
         :param args, kwargs: arguments passed to marshmallow schema class
     """
 
@@ -86,10 +89,12 @@ class Schema(ma_Schema):
             self,
             error_column_name: Union[str, bool] = None,
             split_errors: bool = None,
+            add_index_column: bool = None,
             *args, **kwargs
     ):
         self.error_column_name = DEFAULT_ERRORS_COLUMN_NAME if not error_column_name else error_column_name
         self.split_errors = DEFAULT_SPLIT_INVALID_ROWS if split_errors is None else split_errors
+        self.add_index_column = DEFAULT_ADD_INDEX_COLUMN if add_index_column is None else add_index_column
         super().__init__(*args, **kwargs)
 
     @property
@@ -122,9 +127,9 @@ class Schema(ma_Schema):
 
         # PySpark UDF for serialization
         @udf(returnType=self.spark_schema)
-        def _deserialize_row_udf(row):
+        def _validate_row_udf(row):
             """
-                Deserialize Row object
+                Validates Row object
             """
             data = row.asDict(recursive=True)
             try:
@@ -141,9 +146,12 @@ class Schema(ma_Schema):
 
             return rvalue
 
-        _df: DataFrame = df.withColumn(
+        # Adding index column
+        _df: DataFrame = df.withColumn("id", monotonically_increasing_id()) if self.add_index_column else df
+        # Validate each row in data frame
+        _df: DataFrame = _df.withColumn(
             "fields",
-            _deserialize_row_udf(struct(*df.columns))
+            _validate_row_udf(struct(*df.columns))
         ).select("fields.*")
 
         if self.split_errors:
