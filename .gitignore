@@ -78,3 +78,5 @@ venv/*
 *.egg-info
 
 .coverage
+
+htmlcov/*
