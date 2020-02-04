@@ -80,3 +80,5 @@ venv/*
 .coverage
 
 htmlcov/*
+
+build/
