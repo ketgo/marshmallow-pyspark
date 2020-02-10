@@ -1,5 +1,9 @@
 # marshmallow-pyspark
 
+[![Build Status](https://travis-ci.com/ketgo/marshmallow-pyspark.svg?token=oCVxhfjJAa2zDdszGjoy&branch=master)](https://travis-ci.com/ketgo/marshmallow-pyspark)
+[![codecov.io](https://codecov.io/gh/ketgo/marshmallow-pyspark/coverage.svg?branch=master)](https://codecov.io/gh/ketgo/marshmallow-pyspark/coverage.svg?branch=master)
+[![Apache 2.0 licensed](https://img.shields.io/badge/License-Apache%202.0-yellow.svg)](https://raw.githubusercontent.com/ketgo/marshmallow-pyspark/master/LICENSE)
+
 [Marshmallow]() is a popular package used for data serialization and validation. One defines data schemas in marshmallow 
 containing rules on how input data should be marshalled. Similar to marshmallow, [pyspark]() also comes with its own schema 
 definitions used to process data frames. This package enables users to utilize marshmallow schemas and its powerful data
