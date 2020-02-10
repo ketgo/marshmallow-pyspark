@@ -26,6 +26,7 @@ marshmallow\_pyspark.schema module
 .. automodule:: marshmallow_pyspark.schema
    :members:
    :undoc-members:
+   :exclude-members: opts
    :show-inheritance:
 
 marshmallow\_pyspark.version module

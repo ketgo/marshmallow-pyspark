@@ -105,7 +105,7 @@ class Schema(ma_Schema):
         :param args, kwargs: arguments passed to marshmallow schema class
     """
 
-    # Map of marshmallow field types and corresponding converters
+    #: Map of marshmallow field types and corresponding converters
     CONVERTER_MAP: Mapping[Type[ma_fields.Field], Type[ConverterABC]] = {
         ma_fields.String: StringConverter,
         ma_fields.DateTime: DateTimeConverter,
