@@ -6,7 +6,7 @@ import json
 from typing import *
 
 from marshmallow import Schema as ma_Schema, fields as ma_fields, ValidationError
-from pyspark.sql import DataFrame
+from pyspark.sql import DataFrame, Row
 from pyspark.sql.functions import udf, struct
 from pyspark.sql.types import StructType, StructField, StringType
 
@@ -14,6 +14,43 @@ from .constants import *
 from .converters import (ConverterABC, StringConverter, DateTimeConverter, DateConverter, BooleanConverter,
                          FloatConverter, IntegerConverter, NumberConverter, ListConverter, DictConverter,
                          NestedConverter)
+
+
+# This class is added to support unit testing of UDF
+class _RowValidator:
+    """
+        Row validator class to validate data frame rows. This class
+        is used for internal purposes only.
+
+        :param schema: schema class instance
+        :param error_column_name: error column name to use
+        :param args, kwargs: arguments passed to marshmallow load method
+    """
+
+    def __init__(self, schema: "Schema", error_column_name: str, *args, **kwargs):
+        self._schema = schema
+        self._error_column_name = error_column_name
+        self._args = args
+        self._kwargs = kwargs
+
+    def validate_row(self, row: Row) -> Dict:
+        """
+            Validate data frame row
+        """
+        data = row.asDict(recursive=True)
+        try:
+            rvalue = self._schema.load(data, *self._args, **self._kwargs)
+        except ValidationError as err:
+            rvalue = {
+                self._error_column_name: json.dumps(
+                    {
+                        "row": data,
+                        "errors": err.messages,
+                    }
+                )
+            }
+
+        return rvalue
 
 
 class Schema(ma_Schema):
@@ -33,28 +70,28 @@ class Schema(ma_Schema):
                 release_date = fields.Date()
 
             df = spark.createDataFrame([
-                {"title": "", "release_date": ""},
+                {"title": "valid_1", "release_date": "2020-1-10"},
+                {"title": "valid_2", "release_date": "2020-1-11"},
+                {"title": "invalid_1", "release_date": "2020-31-11"},
+                {"title": "invalid_2", "release_date": "2020-1-51"},
             ])
-            valid_df, errors_df = AlbumSchema()
+            valid_df, errors_df = AlbumSchema().validate_df(df)
 
             valid_df.show()
-            # Data: TODO: Add correct data
-                +---------+-------------+
-                |    title|release_date|
-                +---------+---+--------+--------+
-                |  valid_1| 40|   43.78|    true|
-                |  valid_2| 32|    30.5|   false|
-                |invalid_3| 32|    30.0|   false|
-                +---------+---+--------+--------+
+            #    +-------+------------+
+            #    |  title|release_date|
+            #    +-------+------------+
+            #    |valid_1|  2020-01-10|
+            #    |valid_2|  2020-01-11|
+            #    +-------+------------+
 
             errors_df.show()
-            # Data: TODO: Add correct data
-                +--------------------+
-                |             _errors|
-                +--------------------+
-                |{"row": {"age": "...|
-                |{"row": {"age": "...|
-                +--------------------+
+            #    +--------------------+
+            #    |             _errors|
+            #    +--------------------+
+            #    |{"row": {"release...|
+            #    |{"row": {"release...|
+            #    +--------------------+
 
         :param error_column_name: name of the column to store validation errors.
             Default value is `_errors`.
@@ -119,28 +156,9 @@ class Schema(ma_Schema):
             :param args, kwargs: additional arguments passed to marshmallows` load function
             :returns: Tuple of data frames for valid rows and errors
         """
-
+        row_validator = _RowValidator(self, self.error_column_name, *args, **kwargs)
         # PySpark UDF for serialization
-        @udf(returnType=self.spark_schema)
-        def _validate_row_udf(row):
-            """
-                Validates Row object
-            """
-            data = row.asDict(recursive=True)
-            try:
-                rvalue = self.load(data, *args, **kwargs)
-            except ValidationError as err:
-                rvalue = {
-                    self.error_column_name: json.dumps(
-                        {
-                            "row": data,
-                            "errors": err.messages,
-                        }
-                    )
-                }
-
-            return rvalue
-
+        _validate_row_udf = udf(row_validator.validate_row, returnType=self.spark_schema)
         # Validate each row in data frame
         _df: DataFrame = df.withColumn(
             "fields",

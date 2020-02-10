@@ -7,10 +7,11 @@ import json
 
 import pytest
 from marshmallow import fields
+from pyspark.sql import Row
 from pyspark.sql.types import *
 
 from marshmallow_pyspark.constants import *
-from marshmallow_pyspark.schema import Schema
+from marshmallow_pyspark.schema import Schema, _RowValidator
 
 
 def test_create():
@@ -198,3 +199,27 @@ def test_load_df_no_split(spark_session, schema, input_data, valid_rows, invalid
     for row in valid_rows:
         row[DEFAULT_ERRORS_COLUMN_NAME] = None
     assert all(row in _valid_rows for row in valid_rows)
+
+
+def test_row_validator():
+    input_data = [
+        {"title": "valid_1", "release_date": "2020-1-10"},
+        {"title": "valid_2", "release_date": "2020-1-11"},
+        {"title": "invalid_1", "release_date": "2020-31-11"},
+        {"title": "invalid_2", "release_date": "2020-1-51"},
+    ]
+
+    class TestSchema(Schema):
+        title = fields.Str()
+        release_date = fields.Date()
+
+    validator = _RowValidator(TestSchema(), DEFAULT_ERRORS_COLUMN_NAME)
+    validated_data = [validator.validate_row(Row(**x)) for x in input_data]
+    assert validated_data == [
+        {'release_date': datetime.date(2020, 1, 10), 'title': 'valid_1'},
+        {'release_date': datetime.date(2020, 1, 11), 'title': 'valid_2'},
+        {'_errors': '{"row": {"release_date": "2020-31-11", "title": "invalid_1"}, '
+                    '"errors": {"release_date": ["Not a valid date."]}}'},
+        {'_errors': '{"row": {"release_date": "2020-1-51", "title": "invalid_2"}, '
+                    '"errors": {"release_date": ["Not a valid date."]}}'}
+    ]
