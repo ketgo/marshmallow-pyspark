@@ -106,7 +106,7 @@ class Schema(ma_Schema):
     """
 
     #: Map of marshmallow field types and corresponding converters
-    CONVERTER_MAP: Mapping[Type[ma_fields.Field], Type[ConverterABC]] = {
+    CONVERTER_MAP: Dict[Type[ma_fields.Field], Type[ConverterABC]] = {
         ma_fields.String: StringConverter,
         ma_fields.DateTime: DateTimeConverter,
         ma_fields.Date: DateConverter,

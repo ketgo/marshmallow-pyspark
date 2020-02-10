@@ -96,7 +96,7 @@ class NumberConverter(ConverterABC):
     """
 
     def convert(self, ma_field: ma_fields.Field) -> DataType:
-        return FloatType()
+        return DoubleType()
 
 
 class ListConverter(ConverterABC):

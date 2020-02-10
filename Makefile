@@ -24,7 +24,7 @@ coverage-html:
 
 .PHONY: lint
 lint:
-	pylint py_abac
+	pylint marshmallow_pyspark
 
 .PHONY: release
 release: test
