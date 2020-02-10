@@ -40,10 +40,10 @@ def test_convert():
     (BooleanConverter, fields.Boolean(), BooleanType()),
     (IntegerConverter, fields.Integer(), IntegerType()),
     (FloatConverter, fields.Float(), FloatType()),
-    (NumberConverter, fields.Number(), FloatType()),
+    (NumberConverter, fields.Number(), DoubleType()),
     (ListConverter, fields.List(fields.String()), ArrayType(StringType())),
     (DictConverter, fields.Dict(), MapType(StringType(), StringType())),
-    (DictConverter, fields.Dict(fields.String(), fields.Number()), MapType(StringType(), FloatType())),
+    (DictConverter, fields.Dict(fields.String(), fields.Number()), MapType(StringType(), DoubleType())),
     (
             NestedConverter,
             fields.Nested(Schema.from_dict({"name": fields.String()})),

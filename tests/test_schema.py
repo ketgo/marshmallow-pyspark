@@ -26,7 +26,7 @@ def test_create():
     (fields.Date(), DateType()),
     (fields.Boolean(), BooleanType()),
     (fields.Integer(), IntegerType()),
-    (fields.Number(), FloatType()),
+    (fields.Number(), DoubleType()),
     (fields.List(fields.String()), ArrayType(StringType())),
     (fields.Nested(Schema.from_dict({"name": fields.String()})), StructType([StructField("name", StringType())]))
 ])
