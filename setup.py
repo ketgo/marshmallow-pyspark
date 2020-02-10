@@ -14,7 +14,7 @@ if __name__ == '__main__':
     setup(
         name='marshmallow-pyspark',
         description='PySpark data serializer',
-        keywords='pyspark serializer marshmallow',
+        keywords='pyspark serializer marshmallow data-pipeline data-quality',
         version=about['__version__'],
         author='Ketan Goyal',
         author_email='ketangoyal1988@gmail.com',
