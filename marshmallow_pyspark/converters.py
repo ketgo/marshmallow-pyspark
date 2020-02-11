@@ -6,7 +6,10 @@ from abc import ABCMeta, abstractmethod
 from typing import Mapping, Type
 
 from marshmallow import fields as ma_fields
-from pyspark.sql.types import *
+from pyspark.sql.types import (DataType, StringType, BooleanType,
+                               TimestampType, DateType, IntegerType,
+                               FloatType, DoubleType, ArrayType,
+                               StructType, StructField, MapType)
 
 
 class ConverterABC(metaclass=ABCMeta):
@@ -23,6 +26,9 @@ class ConverterABC(metaclass=ABCMeta):
 
     @property
     def converter_map(self) -> Mapping[Type[ma_fields.Field], Type["ConverterABC"]]:
+        """
+            Map between marshmallow field and corresponding converter.
+        """
         return self._converter_map
 
     @abstractmethod
@@ -130,9 +136,13 @@ class NestedConverter(ConverterABC):
 
     def convert(self, ma_field: ma_fields.Nested) -> DataType:
         _fields = []
-        for field_name, nested_field in ma_field.schema._declared_fields.items():
+        for field_name, nested_field in ma_field.schema._declared_fields.items():  # pylint: disable=W0212
             field_converter = self.converter_map.get(type(nested_field), StringConverter)
             _fields.append(
-                StructField(field_name, field_converter(self.converter_map).convert(nested_field), nullable=True)
+                StructField(
+                    field_name,
+                    field_converter(self.converter_map).convert(nested_field),
+                    nullable=True
+                )
             )
         return StructType(_fields)

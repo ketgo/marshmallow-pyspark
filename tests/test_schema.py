@@ -16,8 +16,8 @@ from marshmallow_pyspark.schema import Schema, _RowValidator
 
 def test_create():
     schema = Schema()
-    assert schema.error_column_name == DEFAULT_ERRORS_COLUMN_NAME
-    assert schema.split_errors == DEFAULT_SPLIT_INVALID_ROWS
+    assert schema.error_column_name == DEFAULT_ERRORS_COLUMN
+    assert schema.split_errors == DEFAULT_SPLIT_ERRORS
 
 
 @pytest.mark.parametrize("ma_field, spark_field", [
@@ -37,7 +37,7 @@ def test_spark_schema(ma_field, spark_field):
     spark_schema = StructType(
         [
             StructField("test_column", spark_field, nullable=True),
-            StructField(DEFAULT_ERRORS_COLUMN_NAME, StringType(), nullable=True)
+            StructField(DEFAULT_ERRORS_COLUMN, StringType(), nullable=True)
         ]
     )
     schema = TestSchema()
@@ -118,7 +118,7 @@ def test_load_df(spark_session, schema, input_data, valid_rows, invalid_rows):
     valid_df, errors_df = schema().validate_df(input_df)
     _valid_rows = [row.asDict(recursive=True) for row in valid_df.collect()]
     assert _valid_rows == valid_rows
-    error_rows = [json.loads(row[DEFAULT_ERRORS_COLUMN_NAME]) for row in errors_df.collect()]
+    error_rows = [json.loads(row[DEFAULT_ERRORS_COLUMN]) for row in errors_df.collect()]
     assert [row["row"] for row in error_rows] == invalid_rows
 
 
@@ -197,7 +197,7 @@ def test_load_df_no_split(spark_session, schema, input_data, valid_rows, invalid
     assert errors_df is None
     _valid_rows = [row.asDict(recursive=True) for row in valid_df.collect()]
     for row in valid_rows:
-        row[DEFAULT_ERRORS_COLUMN_NAME] = None
+        row[DEFAULT_ERRORS_COLUMN] = None
     assert all(row in _valid_rows for row in valid_rows)
 
 
@@ -213,7 +213,7 @@ def test_row_validator():
         title = fields.Str()
         release_date = fields.Date()
 
-    validator = _RowValidator(TestSchema(), DEFAULT_ERRORS_COLUMN_NAME)
+    validator = _RowValidator(TestSchema(), DEFAULT_ERRORS_COLUMN, [])
     validated_data = [validator.validate_row(Row(**x)) for x in input_data]
     assert validated_data == [
         {'release_date': datetime.date(2020, 1, 10), 'title': 'valid_1'},
