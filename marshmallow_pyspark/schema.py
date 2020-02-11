@@ -7,8 +7,9 @@ from typing import *
 
 from marshmallow import Schema as ma_Schema, fields as ma_fields, ValidationError
 from pyspark.sql import DataFrame, Row
-from pyspark.sql.functions import udf, struct
+from pyspark.sql.functions import udf, struct, row_number
 from pyspark.sql.types import StructType, StructField, StringType
+from pyspark.sql.window import Window
 
 from .constants import *
 from .converters import (ConverterABC, StringConverter, DateTimeConverter, DateConverter, BooleanConverter,
@@ -119,6 +120,9 @@ class Schema(ma_Schema):
         ma_fields.Nested: NestedConverter,
     }
 
+    #: List of unique valued single or combination of schema fields
+    UNIQUE: List[Union[str, Tuple(str)]] = []
+
     def __init__(
             self,
             error_column_name: Union[str, bool] = None,
@@ -156,11 +160,14 @@ class Schema(ma_Schema):
             :param args, kwargs: additional arguments passed to marshmallows` load function
             :returns: Tuple of data frames for valid rows and errors
         """
+        # Add duplicate counts for unique fields
+        _df = self._add_duplicate_counts(df)
+        # Create row validator
         row_validator = _RowValidator(self, self.error_column_name, *args, **kwargs)
         # PySpark UDF for serialization
         _validate_row_udf = udf(row_validator.validate_row, returnType=self.spark_schema)
         # Validate each row in data frame
-        _df: DataFrame = df.withColumn(
+        _df: DataFrame = _df.withColumn(
             "fields",
             _validate_row_udf(struct(*df.columns))
         ).select("fields.*")
@@ -176,3 +183,29 @@ class Schema(ma_Schema):
             errors_df = None
 
         return valid_rows_df, errors_df
+
+    def _add_duplicate_counts(self, df: DataFrame) -> DataFrame:
+        """
+            Add duplicate counts for unique fields
+
+            :param df: data frame to add counts
+            :return: data frame object
+        """
+        rvalue = df
+        for unique_fields in self.UNIQUE:
+            # Getting columns to check duplicates
+            columns = [unique_fields] if isinstance(unique_fields, str) else unique_fields
+            self.__check_field_name(columns)
+
+            # Using window function for checking duplicates
+            # See https://stackoverflow.com/questions/38687212/spark-dataframe-drop-duplicates-and-keep-first
+            count_column = COUNT_COLUMN_PREFIX + COMBINATION_COLUMN_SEP.join(columns)
+            window = Window.partitionBy(columns).orderBy(columns)
+            rvalue = rvalue.withColumn(count_column, row_number().over(window))
+
+        return rvalue
+
+    def __check_field_name(self, field_names: List[str]):
+        for field_name in field_names:
+            if field_name not in self._declared_fields:
+                raise ValueError("Field '{}' not found in schema.".format(field_name))

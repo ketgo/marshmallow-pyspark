@@ -139,7 +139,13 @@ equivalent spark SQL data types:
 | `Dict` | `MapType` |
 | `Nested` | `StructType` |
 
-By default the `StringType` data type is used for marshmallow fields not in the above table.
+By default the `StringType` data type is used for marshmallow fields not in the above table. The `spark_schema` property
+of your defined schema can be used to check the converted spark SQL schema:
+```python
+# Gets the spark schema for the Album schema
+AlbumSchema().spark_schema
+# StructType(List(StructField(title,StringType,true),StructField(release_date,DateType,true),StructField(_errors,StringType,true)))
+```
 
 #### Custom Fields
 
