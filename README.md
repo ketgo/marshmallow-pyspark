@@ -119,6 +119,102 @@ schema = AlbumSchema(
 valid_df, errors_df = schema.validate_df(df, unkown=EXCLUDE)
 ```
 
+### Duplicates
+
+Marshmallow-pyspark comes with the ability to validate one or more schema fields for duplicate values. This is achieved
+by adding the field names to the `UNIQUE` attribute of the schema as shown:
+```python
+class AlbumSchema(Schema):
+    # Unique valued field "title" in the schema
+    UNIQUE = ["title"]
+
+    title = fields.Str()
+    release_date = fields.Date()
+
+# Input data frame to validate.
+df = spark.createDataFrame([
+        {"title": "title_1", "release_date": "2020-1-10"},
+        {"title": "title_2", "release_date": "2020-1-11"},
+        {"title": "title_2", "release_date": "2020-3-11"},  # duplicate title
+        {"title": "title_3", "release_date": "2020-1-51"},
+    ])
+
+# Validate data frame
+valid_df, errors_df = AlbumSchema().validate_df(df)
+    
+# List of valid rows
+valid_rows = [row.asDict(recursive=True) for row in valid_df.collect()]
+#
+#   [
+#        {'title': 'title_1', 'release_date': datetime.date(2020, 1, 10)},
+#        {'title': 'title_2', 'release_date': datetime.date(2020, 1, 11)}
+#   ]
+#
+
+# Rows with errors
+error_rows = [row.asDict(recursive=True) for row in errors_df.collect()]
+# 
+#   [
+#        {'_errors': '{"row": {"release_date": "2020-3-11", "title": "title_2", "__count__title": 2}, '
+#                    '"errors": ["duplicate row"]}'},
+#        {'_errors': '{"row": {"release_date": "2020-1-51", "title": "title_3", "__count__title": 1}, '
+#                    '"errors": {"release_date": ["Not a valid date."]}}'}
+#    ]
+#
+``` 
+The technique to drop duplicates but keep first is discussed in this [link](https://stackoverflow.com/questions/38687212/spark-dataframe-drop-duplicates-and-keep-first).
+In case there are multiple unique fields in the schema just add them to the `UNIQUE`, e.g. `UNIQUE=["title", "release_date"]`. 
+You can even specify uniqueness for combination of fields by grouping them in a list:
+```python
+class AlbumSchema(Schema):
+    # Combined values of "title" and "release_date" should be unique
+    UNIQUE = [["title", "release_date"]]
+
+    title = fields.Str()
+    release_date = fields.Date()
+
+# Input data frame to validate.
+df = spark.createDataFrame([
+        {"title": "title_1", "release_date": "2020-1-10"},
+        {"title": "title_2", "release_date": "2020-1-11"},
+        {"title": "title_2", "release_date": "2020-3-11"},
+        {"title": "title_3", "release_date": "2020-1-21"},
+        {"title": "title_3", "release_date": "2020-1-21"},
+        {"title": "title_4", "release_date": "2020-1-51"},
+    ])
+
+# Validate data frame
+valid_df, errors_df = AlbumSchema().validate_df(df)
+    
+# List of valid rows
+valid_rows = [row.asDict(recursive=True) for row in valid_df.collect()]
+#
+#   [
+#        {'title': 'title_1', 'release_date': datetime.date(2020, 1, 10)},
+#        {'title': 'title_2', 'release_date': datetime.date(2020, 1, 11)},
+#        {'title': 'title_3', 'release_date': datetime.date(2020, 1, 21)}
+#   ]
+#
+
+# Rows with errors
+error_rows = [row.asDict(recursive=True) for row in errors_df.collect()]
+# 
+#   [
+#        {'_errors': '{"row": {"release_date": "2020-1-21", "title": "title_3", '
+#                    '"__count__title": 2, "__count__release_date": 2}, '
+#                    '"errors": ["duplicate row"]}'},
+#        {'_errors': '{"row": {"release_date": "2020-1-51", "title": "title_4", '
+#                    '"__count__title": 1, "__count__release_date": 1}, '
+#                    '"errors": {"release_date": ["Not a valid date."]}}'},
+#        {'_errors': '{"row": {"release_date": "2020-3-11", "title": "title_2", '
+#                    '"__count__title": 2, "__count__release_date": 1}, '
+#                    '"errors": ["duplicate row"]}'}
+#    ]
+#
+```
+**WARNING**: Duplicate check requires data shuffle per unique field. Having large number of unique fields will effect 
+spark job performance. By default `UNIQUE` is set to an empty list preventing any duplicate checks. 
+
 ### Fields
 
 Marshmallow comes with a variety of different fields that can be used to define schemas. Internally marshmallow-pyspark 
@@ -182,14 +278,6 @@ User.CONVERTER_MAP[fields.Email] = EmailConverter
 # You can now use your schema to validate the input data frame.
 valid_df, errors_df = User().validate_df(input_df)
 ```
-
-
-## Milestones
-
-Most valuable features to be implemented in the order of importance:
-
-- [ ] Validation for unique valued fields
-- [ ] Support marshmallow function and method fields
 
 ## Development
 
