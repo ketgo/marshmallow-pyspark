@@ -16,8 +16,8 @@ from marshmallow_pyspark.schema import Schema, _RowValidator
 
 def test_create():
     schema = Schema()
-    assert schema.error_column_name == DEFAULT_ERRORS_COLUMN_NAME
-    assert schema.split_errors == DEFAULT_SPLIT_INVALID_ROWS
+    assert schema.error_column_name == DEFAULT_ERRORS_COLUMN
+    assert schema.split_errors == DEFAULT_SPLIT_ERRORS
 
 
 @pytest.mark.parametrize("ma_field, spark_field", [
@@ -37,7 +37,7 @@ def test_spark_schema(ma_field, spark_field):
     spark_schema = StructType(
         [
             StructField("test_column", spark_field, nullable=True),
-            StructField(DEFAULT_ERRORS_COLUMN_NAME, StringType(), nullable=True)
+            StructField(DEFAULT_ERRORS_COLUMN, StringType(), nullable=True)
         ]
     )
     schema = TestSchema()
@@ -111,14 +111,14 @@ def test_spark_schema(ma_field, spark_field):
             ]
     )
 ])
-def test_load_df(spark_session, schema, input_data, valid_rows, invalid_rows):
+def test_validate_df(spark_session, schema, input_data, valid_rows, invalid_rows):
     input_df = spark_session.createDataFrame(input_data)
 
     # Test with split
     valid_df, errors_df = schema().validate_df(input_df)
     _valid_rows = [row.asDict(recursive=True) for row in valid_df.collect()]
     assert _valid_rows == valid_rows
-    error_rows = [json.loads(row[DEFAULT_ERRORS_COLUMN_NAME]) for row in errors_df.collect()]
+    error_rows = [json.loads(row[DEFAULT_ERRORS_COLUMN]) for row in errors_df.collect()]
     assert [row["row"] for row in error_rows] == invalid_rows
 
 
@@ -189,7 +189,7 @@ def test_load_df(spark_session, schema, input_data, valid_rows, invalid_rows):
             ]
     )
 ])
-def test_load_df_no_split(spark_session, schema, input_data, valid_rows, invalid_rows):
+def test_validate_df_no_split(spark_session, schema, input_data, valid_rows, invalid_rows):
     input_df = spark_session.createDataFrame(input_data)
 
     # Test without split
@@ -197,8 +197,247 @@ def test_load_df_no_split(spark_session, schema, input_data, valid_rows, invalid
     assert errors_df is None
     _valid_rows = [row.asDict(recursive=True) for row in valid_df.collect()]
     for row in valid_rows:
-        row[DEFAULT_ERRORS_COLUMN_NAME] = None
+        row[DEFAULT_ERRORS_COLUMN] = None
     assert all(row in _valid_rows for row in valid_rows)
+
+
+def test_add_duplicate_counts(spark_session):
+    # Single unique column test
+    input_data = [
+        {"title": "valid_1", "release_date": "2020-1-10"},
+        {"title": "invalid_1", "release_date": "2020-1-11"},
+        {"title": "invalid_1", "release_date": "2020-31-11"},
+        {"title": "invalid_2", "release_date": "2020-1-51"},
+    ]
+    input_df = spark_session.createDataFrame(input_data)
+
+    class TestSchema(Schema):
+        UNIQUE = ["title"]
+
+        title = fields.Str()
+        release_date = fields.Date()
+
+    df = TestSchema()._add_duplicate_counts(input_df)
+    rows = [row.asDict(recursive=True) for row in df.collect()]
+    assert rows == [
+        {'release_date': '2020-1-11', 'title': 'invalid_1', '__count__title': 1},
+        {'release_date': '2020-31-11', 'title': 'invalid_1', '__count__title': 2},
+        {'release_date': '2020-1-51', 'title': 'invalid_2', '__count__title': 1},
+        {'release_date': '2020-1-10', 'title': 'valid_1', '__count__title': 1}
+    ]
+
+    # Compound unique column test
+    input_data = [
+        {"title": "valid_1", "release_date": "2020-1-10"},
+        {"title": "invalid_1", "release_date": "2020-1-11"},
+        {"title": "invalid_1", "release_date": "2020-31-11"},
+        {"title": "invalid_2", "release_date": "2020-1-51"},
+        {"title": "invalid_2", "release_date": "2020-1-51"},
+    ]
+    input_df = spark_session.createDataFrame(input_data)
+
+    class TestSchema(Schema):
+        UNIQUE = [["title", "release_date"]]
+
+        title = fields.Str()
+        release_date = fields.Date()
+
+    df = TestSchema()._add_duplicate_counts(input_df)
+    rows = [row.asDict(recursive=True) for row in df.collect()]
+    assert rows == [
+        {'release_date': '2020-1-11', 'title': 'invalid_1', '__count__title~release_date': 1},
+        {'release_date': '2020-31-11', 'title': 'invalid_1', '__count__title~release_date': 1},
+        {'release_date': '2020-1-51', 'title': 'invalid_2', '__count__title~release_date': 1},
+        {'release_date': '2020-1-51', 'title': 'invalid_2', '__count__title~release_date': 2},
+        {'release_date': '2020-1-10', 'title': 'valid_1', '__count__title~release_date': 1}
+    ]
+
+    # Multiple unique columns test
+    input_data = [
+        {"title": "valid_1", "release_date": "2020-1-10"},
+        {"title": "invalid_1", "release_date": "2020-1-11"},
+        {"title": "invalid_1", "release_date": "2020-31-11"},
+        {"title": "invalid_2", "release_date": "2020-1-51"},
+        {"title": "invalid_2", "release_date": "2020-1-51"},
+    ]
+    input_df = spark_session.createDataFrame(input_data)
+
+    class TestSchema(Schema):
+        UNIQUE = ["title", "release_date"]
+
+        title = fields.Str()
+        release_date = fields.Date()
+
+    df = TestSchema()._add_duplicate_counts(input_df)
+    rows = [row.asDict(recursive=True) for row in df.collect()]
+    assert rows == [
+        {'release_date': '2020-1-10', 'title': 'valid_1', '__count__title': 1, '__count__release_date': 1},
+        {'release_date': '2020-1-11', 'title': 'invalid_1', '__count__title': 1, '__count__release_date': 1},
+        {'release_date': '2020-1-51', 'title': 'invalid_2', '__count__title': 1, '__count__release_date': 1},
+        {'release_date': '2020-1-51', 'title': 'invalid_2', '__count__title': 2, '__count__release_date': 2},
+        {'release_date': '2020-31-11', 'title': 'invalid_1', '__count__title': 2, '__count__release_date': 1}
+    ]
+
+
+def test_validate_df_with_duplicates(spark_session):
+    # Single unique column test
+    input_data = [
+        {"title": "title_1", "release_date": "2020-1-10"},
+        {"title": "title_2", "release_date": "2020-1-11"},
+        {"title": "title_2", "release_date": "2020-3-11"},
+        {"title": "title_3", "release_date": "2020-1-51"},
+    ]
+    input_df = spark_session.createDataFrame(input_data)
+
+    class TestSchema(Schema):
+        UNIQUE = ["title"]
+
+        title = fields.Str()
+        release_date = fields.Date()
+
+    valid_df, errors_df = TestSchema().validate_df(input_df)
+    valid_rows = [row.asDict(recursive=True) for row in valid_df.collect()]
+    error_rows = [row.asDict(recursive=True) for row in errors_df.collect()]
+    assert valid_rows == [
+        {'title': 'title_1', 'release_date': datetime.date(2020, 1, 10)},
+        {'title': 'title_2', 'release_date': datetime.date(2020, 1, 11)}
+    ]
+    assert error_rows == [
+        {'_errors': '{"row": {"release_date": "2020-3-11", "title": "title_2", "__count__title": 2}, '
+                    '"errors": ["duplicate row"]}'},
+        {'_errors': '{"row": {"release_date": "2020-1-51", "title": "title_3", "__count__title": 1}, '
+                    '"errors": {"release_date": ["Not a valid date."]}}'}
+    ]
+
+    # Compound unique column test
+    input_data = [
+        {"title": "title_1", "release_date": "2020-1-10"},
+        {"title": "title_2", "release_date": "2020-1-11"},
+        {"title": "title_2", "release_date": "2020-3-11"},
+        {"title": "title_3", "release_date": "2020-1-21"},
+        {"title": "title_3", "release_date": "2020-1-21"},
+        {"title": "title_4", "release_date": "2020-1-51"},
+    ]
+    input_df = spark_session.createDataFrame(input_data)
+
+    class TestSchema(Schema):
+        UNIQUE = [["title", "release_date"]]
+
+        title = fields.Str()
+        release_date = fields.Date()
+
+    valid_df, errors_df = TestSchema().validate_df(input_df)
+    valid_rows = [row.asDict(recursive=True) for row in valid_df.collect()]
+    error_rows = [row.asDict(recursive=True) for row in errors_df.collect()]
+    assert valid_rows == [
+        {'title': 'title_1', 'release_date': datetime.date(2020, 1, 10)},
+        {'title': 'title_2', 'release_date': datetime.date(2020, 1, 11)},
+        {'title': 'title_2', 'release_date': datetime.date(2020, 3, 11)},
+        {'title': 'title_3', 'release_date': datetime.date(2020, 1, 21)}
+    ]
+    assert error_rows == [
+        {'_errors': '{"row": {"release_date": "2020-1-21", "title": "title_3", "__count__title~release_date": 2}, '
+                    '"errors": ["duplicate row"]}'},
+        {'_errors': '{"row": {"release_date": "2020-1-51", "title": "title_4", "__count__title~release_date": 1}, '
+                    '"errors": {"release_date": ["Not a valid date."]}}'}
+    ]
+
+    # Multiple unique columns test
+    input_data = [
+        {"title": "title_1", "release_date": "2020-1-10"},
+        {"title": "title_2", "release_date": "2020-1-11"},
+        {"title": "title_2", "release_date": "2020-3-11"},
+        {"title": "title_3", "release_date": "2020-1-21"},
+        {"title": "title_3", "release_date": "2020-1-21"},
+        {"title": "title_4", "release_date": "2020-1-51"},
+    ]
+    input_df = spark_session.createDataFrame(input_data)
+
+    class TestSchema(Schema):
+        UNIQUE = ["title", "release_date"]
+
+        title = fields.Str()
+        release_date = fields.Date()
+
+    valid_df, errors_df = TestSchema().validate_df(input_df)
+    valid_rows = [row.asDict(recursive=True) for row in valid_df.collect()]
+    error_rows = [row.asDict(recursive=True) for row in errors_df.collect()]
+    assert valid_rows == [
+        {'title': 'title_1', 'release_date': datetime.date(2020, 1, 10)},
+        {'title': 'title_2', 'release_date': datetime.date(2020, 1, 11)},
+        {'title': 'title_3', 'release_date': datetime.date(2020, 1, 21)}
+    ]
+    assert error_rows == [
+        {'_errors': '{"row": {"release_date": "2020-1-21", "title": "title_3", '
+                    '"__count__title": 2, "__count__release_date": 2}, '
+                    '"errors": ["duplicate row"]}'},
+        {'_errors': '{"row": {"release_date": "2020-1-51", "title": "title_4", '
+                    '"__count__title": 1, "__count__release_date": 1}, '
+                    '"errors": {"release_date": ["Not a valid date."]}}'},
+        {'_errors': '{"row": {"release_date": "2020-3-11", "title": "title_2", '
+                    '"__count__title": 2, "__count__release_date": 1}, '
+                    '"errors": ["duplicate row"]}'}
+    ]
+
+
+def test_validate_df_invalid_unique(spark_session):
+    # Single unique column test
+    input_data = [
+        {"title": "title_1", "release_date": "2020-1-10"},
+        {"title": "title_2", "release_date": "2020-1-11"},
+        {"title": "title_2", "release_date": "2020-3-11"},
+        {"title": "title_3", "release_date": "2020-1-51"},
+    ]
+    input_df = spark_session.createDataFrame(input_data)
+
+    class TestSchema(Schema):
+        UNIQUE = ["title_fake"]
+
+        title = fields.Str()
+        release_date = fields.Date()
+
+    with pytest.raises(ValueError):
+        TestSchema().validate_df(input_df)
+
+    # Compound unique column test
+    input_data = [
+        {"title": "title_1", "release_date": "2020-1-10"},
+        {"title": "title_2", "release_date": "2020-1-11"},
+        {"title": "title_2", "release_date": "2020-3-11"},
+        {"title": "title_3", "release_date": "2020-1-21"},
+        {"title": "title_3", "release_date": "2020-1-21"},
+        {"title": "title_4", "release_date": "2020-1-51"},
+    ]
+    input_df = spark_session.createDataFrame(input_data)
+
+    class TestSchema(Schema):
+        UNIQUE = [["title", "date"]]
+
+        title = fields.Str()
+        release_date = fields.Date()
+
+    with pytest.raises(ValueError):
+        TestSchema().validate_df(input_df)
+
+    # Multiple unique columns test
+    input_data = [
+        {"title": "title_1", "release_date": "2020-1-10"},
+        {"title": "title_2", "release_date": "2020-1-11"},
+        {"title": "title_2", "release_date": "2020-3-11"},
+        {"title": "title_3", "release_date": "2020-1-21"},
+        {"title": "title_3", "release_date": "2020-1-21"},
+        {"title": "title_4", "release_date": "2020-1-51"},
+    ]
+    input_df = spark_session.createDataFrame(input_data)
+
+    class TestSchema(Schema):
+        UNIQUE = ["title", "_date"]
+
+        title = fields.Str()
+        release_date = fields.Date()
+
+    with pytest.raises(ValueError):
+        TestSchema().validate_df(input_df)
 
 
 def test_row_validator():
@@ -213,7 +452,7 @@ def test_row_validator():
         title = fields.Str()
         release_date = fields.Date()
 
-    validator = _RowValidator(TestSchema(), DEFAULT_ERRORS_COLUMN_NAME)
+    validator = _RowValidator(TestSchema(), DEFAULT_ERRORS_COLUMN, [])
     validated_data = [validator.validate_row(Row(**x)) for x in input_data]
     assert validated_data == [
         {'release_date': datetime.date(2020, 1, 10), 'title': 'valid_1'},
@@ -221,5 +460,31 @@ def test_row_validator():
         {'_errors': '{"row": {"release_date": "2020-31-11", "title": "invalid_1"}, '
                     '"errors": {"release_date": ["Not a valid date."]}}'},
         {'_errors': '{"row": {"release_date": "2020-1-51", "title": "invalid_2"}, '
+                    '"errors": {"release_date": ["Not a valid date."]}}'}
+    ]
+
+
+def test_row_validator_with_duplicates():
+    input_data = [
+        {"title": "title_1", "release_date": "2020-1-10", '__count__title': 1},
+        {"title": "title_2", "release_date": "2020-1-11", '__count__title': 1},
+        {"title": "title_2", "release_date": "2020-3-11", '__count__title': 2},
+        {"title": "title_3", "release_date": "2020-1-51", '__count__title': 1},
+    ]
+
+    class TestSchema(Schema):
+        UNIQUE = ["title"]
+
+        title = fields.Str()
+        release_date = fields.Date()
+
+    validator = _RowValidator(TestSchema(), DEFAULT_ERRORS_COLUMN, TestSchema.UNIQUE)
+    validated_data = [validator.validate_row(Row(**x)) for x in input_data]
+    assert validated_data == [
+        {'release_date': datetime.date(2020, 1, 10), 'title': 'title_1'},
+        {'release_date': datetime.date(2020, 1, 11), 'title': 'title_2'},
+        {'_errors': '{"row": {"__count__title": 2, "release_date": "2020-3-11", "title": "title_2"}, '
+                    '"errors": ["duplicate row"]}'},
+        {'_errors': '{"row": {"__count__title": 1, "release_date": "2020-1-51", "title": "title_3"}, '
                     '"errors": {"release_date": ["Not a valid date."]}}'}
     ]

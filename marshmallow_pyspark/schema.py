@@ -3,17 +3,20 @@
 """
 
 import json
-from typing import *
+from typing import Union, Dict, Tuple, List, Type
 
 from marshmallow import Schema as ma_Schema, fields as ma_fields, ValidationError
 from pyspark.sql import DataFrame, Row
-from pyspark.sql.functions import udf, struct
+from pyspark.sql.functions import udf, struct, row_number
 from pyspark.sql.types import StructType, StructField, StringType
+from pyspark.sql.window import Window
 
-from .constants import *
-from .converters import (ConverterABC, StringConverter, DateTimeConverter, DateConverter, BooleanConverter,
-                         FloatConverter, IntegerConverter, NumberConverter, ListConverter, DictConverter,
-                         NestedConverter)
+from .constants import (DEFAULT_ERRORS_COLUMN, COMBINATION_COLUMN_SEP,
+                        COUNT_COLUMN_TEMPLATE, DEFAULT_SPLIT_ERRORS)
+from .converters import (ConverterABC, StringConverter, DateTimeConverter,
+                         DateConverter, BooleanConverter, FloatConverter,
+                         IntegerConverter, NumberConverter, ListConverter,
+                         DictConverter, NestedConverter)
 
 
 # This class is added to support unit testing of UDF
@@ -24,23 +27,45 @@ class _RowValidator:
 
         :param schema: schema class instance
         :param error_column_name: error column name to use
+        :param unique_fields: list of unique fields to check
         :param args, kwargs: arguments passed to marshmallow load method
     """
 
-    def __init__(self, schema: "Schema", error_column_name: str, *args, **kwargs):
+    def __init__(
+            self,
+            schema: "Schema",
+            error_column_name: str,
+            unique_fields: List[Union[str, List[str]]],
+            *args, **kwargs
+    ):
         self._schema = schema
         self._error_column_name = error_column_name
+        self._unique_fields = unique_fields
         self._args = args
         self._kwargs = kwargs
+
+        # Creating duplicate count column names
+        self._count_columns = []
+        for field in self._unique_fields:
+            column = [field] if isinstance(field, str) else field
+            count_column = COUNT_COLUMN_TEMPLATE.format(COMBINATION_COLUMN_SEP.join(column))
+            self._count_columns.append(count_column)
 
     def validate_row(self, row: Row) -> Dict:
         """
             Validate data frame row
         """
         data = row.asDict(recursive=True)
+        schema_data = {key: value for key, value in data.items() if key not in self._count_columns}
+        duplicate_counts_data = [data[column] for column in self._count_columns]
         try:
-            rvalue = self._schema.load(data, *self._args, **self._kwargs)
+            # Validate schema using marshmallow
+            rvalue = self._schema.load(schema_data, *self._args, **self._kwargs)
+            # Validate uniqueness
+            if sum(duplicate_counts_data) > len(duplicate_counts_data):
+                raise ValidationError("duplicate row")
         except ValidationError as err:
+            # Return errors
             rvalue = {
                 self._error_column_name: json.dumps(
                     {
@@ -119,14 +144,18 @@ class Schema(ma_Schema):
         ma_fields.Nested: NestedConverter,
     }
 
+    #: List of unique valued single or combination of schema fields
+    UNIQUE: List[Union[str, List[str]]] = []
+
     def __init__(
             self,
             error_column_name: Union[str, bool] = None,
             split_errors: bool = None,
             *args, **kwargs
     ):
-        self.error_column_name = DEFAULT_ERRORS_COLUMN_NAME if not error_column_name else error_column_name
-        self.split_errors = DEFAULT_SPLIT_INVALID_ROWS if split_errors is None else split_errors
+        self.error_column_name = DEFAULT_ERRORS_COLUMN \
+            if error_column_name is None else error_column_name
+        self.split_errors = DEFAULT_SPLIT_ERRORS if split_errors is None else split_errors
         super().__init__(*args, **kwargs)
 
     @property
@@ -144,6 +173,7 @@ class Schema(ma_Schema):
 
         return StructType(fields)
 
+    # pylint: disable=invalid-name
     def validate_df(
             self,
             df: DataFrame,
@@ -156,23 +186,56 @@ class Schema(ma_Schema):
             :param args, kwargs: additional arguments passed to marshmallows` load function
             :returns: Tuple of data frames for valid rows and errors
         """
-        row_validator = _RowValidator(self, self.error_column_name, *args, **kwargs)
+        # Add duplicate counts for unique fields
+        _df = self._add_duplicate_counts(df)
+        # Create row validator
+        row_validator = _RowValidator(self, self.error_column_name, self.UNIQUE, *args, **kwargs)
         # PySpark UDF for serialization
         _validate_row_udf = udf(row_validator.validate_row, returnType=self.spark_schema)
         # Validate each row in data frame
-        _df: DataFrame = df.withColumn(
+        _df: DataFrame = _df.withColumn(
             "fields",
-            _validate_row_udf(struct(*df.columns))
+            _validate_row_udf(struct(*_df.columns))
         ).select("fields.*")
 
         if self.split_errors:
             # Cache date to avoid re-run of validation for errors data frame
             _df.cache()
             # Split data frame into valid and invalid rows
-            valid_rows_df = _df.where(_df[self.error_column_name].isNull()).drop(self.error_column_name)
-            errors_df = _df.select(self.error_column_name).where(_df[self.error_column_name].isNotNull())
+            valid_rows_df = _df.where(
+                _df[self.error_column_name].isNull()
+            ).drop(self.error_column_name)
+            errors_df = _df.select(
+                self.error_column_name
+            ).where(_df[self.error_column_name].isNotNull())
         else:
             valid_rows_df = _df
             errors_df = None
 
         return valid_rows_df, errors_df
+
+    # pylint: disable=invalid-name
+    def _add_duplicate_counts(self, df: DataFrame) -> DataFrame:
+        """
+            Add duplicate counts for unique fields
+
+            :param df: data frame to add counts
+            :return: data frame object
+        """
+        rvalue = df
+        for unique_fields in self.UNIQUE:
+            # Getting columns to check duplicates
+            columns = [unique_fields] if isinstance(unique_fields, str) else unique_fields
+            self.__check_field_name(columns)
+
+            # Using window function for checking duplicates
+            count_column = COUNT_COLUMN_TEMPLATE.format(COMBINATION_COLUMN_SEP.join(columns))
+            window = Window.partitionBy(columns).orderBy(columns)
+            rvalue = rvalue.withColumn(count_column, row_number().over(window))
+
+        return rvalue
+
+    def __check_field_name(self, field_names: List[str]):
+        for field_name in field_names:
+            if field_name not in self._declared_fields:
+                raise ValueError("Field '{}' not found in schema.".format(field_name))
