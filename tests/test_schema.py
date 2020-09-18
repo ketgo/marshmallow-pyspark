@@ -454,13 +454,16 @@ def test_row_validator():
 
     validator = _RowValidator(TestSchema(), DEFAULT_ERRORS_COLUMN, [])
     validated_data = [validator.validate_row(Row(**x)) for x in input_data]
+    for row in validated_data:
+        if '_errors' in row:
+            row['_errors'] = json.loads(row['_errors'])
     assert validated_data == [
         {'release_date': datetime.date(2020, 1, 10), 'title': 'valid_1'},
         {'release_date': datetime.date(2020, 1, 11), 'title': 'valid_2'},
-        {'_errors': '{"row": {"release_date": "2020-31-11", "title": "invalid_1"}, '
-                    '"errors": {"release_date": ["Not a valid date."]}}'},
-        {'_errors': '{"row": {"release_date": "2020-1-51", "title": "invalid_2"}, '
-                    '"errors": {"release_date": ["Not a valid date."]}}'}
+        {'_errors': {"row": {"release_date": "2020-31-11", "title": "invalid_1"},
+                     "errors": {"release_date": ["Not a valid date."]}}},
+        {'_errors': {"row": {"release_date": "2020-1-51", "title": "invalid_2"},
+                     "errors": {"release_date": ["Not a valid date."]}}}
     ]
 
 
@@ -480,11 +483,14 @@ def test_row_validator_with_duplicates():
 
     validator = _RowValidator(TestSchema(), DEFAULT_ERRORS_COLUMN, TestSchema.UNIQUE)
     validated_data = [validator.validate_row(Row(**x)) for x in input_data]
+    for row in validated_data:
+        if '_errors' in row:
+            row['_errors'] = json.loads(row['_errors'])
     assert validated_data == [
         {'release_date': datetime.date(2020, 1, 10), 'title': 'title_1'},
         {'release_date': datetime.date(2020, 1, 11), 'title': 'title_2'},
-        {'_errors': '{"row": {"__count__title": 2, "release_date": "2020-3-11", "title": "title_2"}, '
-                    '"errors": ["duplicate row"]}'},
-        {'_errors': '{"row": {"__count__title": 1, "release_date": "2020-1-51", "title": "title_3"}, '
-                    '"errors": {"release_date": ["Not a valid date."]}}'}
+        {'_errors': {"row": {"__count__title": 2, "release_date": "2020-3-11", "title": "title_2"},
+                     "errors": ["duplicate row"]}},
+        {'_errors': {"row": {"__count__title": 1, "release_date": "2020-1-51", "title": "title_3"},
+                     "errors": {"release_date": ["Not a valid date."]}}}
     ]
