@@ -11,6 +11,8 @@ from pyspark.sql.types import (DataType, StringType, BooleanType,
                                FloatType, DoubleType, ArrayType,
                                StructType, StructField, MapType)
 
+from .fields import Raw
+
 
 class ConverterABC(metaclass=ABCMeta):
     """
@@ -40,6 +42,15 @@ class ConverterABC(metaclass=ABCMeta):
             :return: spark SQL data type instance
         """
         raise NotImplementedError()
+
+
+class RawConverter(ConverterABC):
+    """
+        Raw field converter
+    """
+
+    def convert(self, field: Raw) -> DataType:
+        return field.spark_type
 
 
 class StringConverter(ConverterABC):
