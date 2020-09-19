@@ -224,6 +224,7 @@ equivalent spark SQL data types:
 
 | Marshmallow | PySpark |
 | --- | --- |
+| `Raw` | user specified |
 | `String` | `StringType` |
 | `DateTime` | `TimestampType` |
 | `Date` | `DateType` |
@@ -244,6 +245,48 @@ AlbumSchema().spark_schema
 ```
 
 #### Custom Fields
+
+Marshmallow_pyspark comes with support for an additional `Raw` field. The `Raw` field does not perform any formatting
+and requires the user to specify the spark data type associated with the field. See the following example:
+```python
+from marshmallow_pyspark import Schema
+from marshmallow_pyspark.fields import Raw
+from marshmallow import fields
+from pyspark.sql.types import DateType
+from datetime import date
+
+
+class AlbumSchema(Schema):
+    title = fields.Str()
+    # Takes python datetime.date objects and treats them as pyspark DateType
+    release_date = Raw(spark_type=DateType())
+
+# Input data frame to validate.
+df = spark.createDataFrame([
+        {"title": "title_1", "release_date": date(2020, 1, 10)},
+        {"title": "title_2", "release_date": date(2020, 1, 11)},
+        {"title": "title_3", "release_date": date(2020, 3, 10)},
+    ])
+
+# Validate data frame
+valid_df, errors_df = AlbumSchema().validate_df(df)
+    
+# List of valid rows
+valid_rows = [row.asDict(recursive=True) for row in valid_df.collect()]
+#
+#   [
+#        {'title': 'title_1', 'release_date': datetime.date(2020, 1, 10)},
+#        {'title': 'title_2', 'release_date': datetime.date(2020, 1, 11)},
+#        {'title': 'title_3', 'release_date': datetime.date(2020, 3, 10)}
+#   ]
+#
+
+# Rows with errors
+error_rows = [row.asDict(recursive=True) for row in errors_df.collect()]
+# 
+#   []
+#
+```
 
 It is also possible to add support for custom marshmallow fields, or those missing in the above table. In order to do so, 
 you would need to create a converter for the custom field. The converter can be built using the `ConverterABC` interface:

@@ -16,7 +16,8 @@ from .constants import (DEFAULT_ERRORS_COLUMN, COMBINATION_COLUMN_SEP,
 from .converters import (ConverterABC, StringConverter, DateTimeConverter,
                          DateConverter, BooleanConverter, FloatConverter,
                          IntegerConverter, NumberConverter, ListConverter,
-                         DictConverter, NestedConverter)
+                         DictConverter, NestedConverter, RawConverter)
+from .fields import Raw
 
 
 # This class is added to support unit testing of UDF
@@ -142,6 +143,7 @@ class Schema(ma_Schema):
         ma_fields.List: ListConverter,
         ma_fields.Dict: DictConverter,
         ma_fields.Nested: NestedConverter,
+        Raw: RawConverter,
     }
 
     #: List of unique valued single or combination of schema fields

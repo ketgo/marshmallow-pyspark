@@ -7,6 +7,7 @@ from marshmallow import Schema
 from marshmallow import fields
 
 from marshmallow_pyspark.converters import *
+from marshmallow_pyspark.fields import Raw
 from marshmallow_pyspark.schema import Schema
 
 
@@ -34,6 +35,7 @@ def test_convert():
 
 
 @pytest.mark.parametrize("field_converter, ma_field, spark_type", [
+    (RawConverter, Raw(spark_type=DateType()), DateType()),
     (StringConverter, fields.String(), StringType()),
     (DateTimeConverter, fields.DateTime(), TimestampType()),
     (DateConverter, fields.Date(), DateType()),
