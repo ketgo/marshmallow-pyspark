@@ -38,8 +38,8 @@ def test_validate_df(spark_session):
     input_data = [
         {"title": "valid_1", "release_date": date(2020, 1, 10)},
         {"title": "valid_2", "release_date": date(2020, 1, 11)},
-        {"title": "invalid_1", "release_date": date(2020, 1, 11)},
-        {"title": "invalid_2", "release_date": date(2020, 1, 21)},
+        {"title": "valid_3", "release_date": date(2020, 1, 11)},
+        {"title": "valid_4", "release_date": date(2020, 1, 21)},
     ]
 
     # Input data frame to validate.
