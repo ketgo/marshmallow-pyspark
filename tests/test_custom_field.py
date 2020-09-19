@@ -11,12 +11,12 @@ from marshmallow_pyspark.converters import DateConverter
 
 
 class DateObject(fields.Field):
-    def _serialize(self, value, attr, obj, **kwargs):
+    def _serialize(self, value, attr, obj, **kwargs):  # pragma: no cover
         if value is None:
             return None
         return str(value)
 
-    def _deserialize(self, value, attr, data, **kwargs):
+    def _deserialize(self, value, attr, data, **kwargs):  # pragma: no cover
         # The value is already a date object
         if isinstance(value, date):
             return value
