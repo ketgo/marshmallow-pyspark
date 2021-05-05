@@ -72,7 +72,8 @@ class _RowValidator:
                     {
                         "row": data,
                         "errors": err.messages,
-                    }
+                    },
+                    default=str,
                 )
             }
 
