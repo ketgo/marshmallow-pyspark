@@ -451,7 +451,7 @@ def test_row_validator():
     class TestSchema(Schema):
         title = fields.Str()
         release_date = fields.Date()
-        timestamp = fields.Raw(spark_type=DateType())
+        timestamp = fields.Raw(metadata=dict(spark_type=DateType()))
 
     validator = _RowValidator(TestSchema(), DEFAULT_ERRORS_COLUMN, [])
     validated_data = [validator.validate_row(Row(**x)) for x in input_data]
