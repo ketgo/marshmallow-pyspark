@@ -7,11 +7,12 @@ import json
 
 import pytest
 from marshmallow import fields
-from pyspark.sql import Row
 from pyspark.sql.types import *
+from pyspark.sql import Row
 
 from marshmallow_pyspark.constants import *
 from marshmallow_pyspark.schema import Schema, _RowValidator
+from marshmallow_pyspark.fields import Raw
 
 
 def test_create():
@@ -464,15 +465,16 @@ def test_validate_df_invalid_unique(spark_session):
 
 def test_row_validator():
     input_data = [
-        {"title": "valid_1", "release_date": "2020-1-10"},
-        {"title": "valid_2", "release_date": "2020-1-11"},
-        {"title": "invalid_1", "release_date": "2020-31-11"},
-        {"title": "invalid_2", "release_date": "2020-1-51"},
+        {"title": "valid_1", "release_date": "2020-1-10", "timestamp": datetime.datetime(2021, 5, 5)},
+        {"title": "valid_2", "release_date": "2020-1-11", "timestamp": datetime.datetime(2021, 5, 5)},
+        {"title": "invalid_1", "release_date": "2020-31-11", "timestamp": datetime.datetime(2021, 5, 5)},
+        {"title": "invalid_2", "release_date": "2020-1-51", "timestamp": datetime.datetime(2021, 5, 5)},
     ]
 
     class TestSchema(Schema):
         title = fields.Str()
         release_date = fields.Date()
+        timestamp = Raw(spark_type=DateType())
 
     validator = _RowValidator(TestSchema(), DEFAULT_ERRORS_COLUMN, [])
     validated_data = [validator.validate_row(Row(**x)) for x in input_data]
@@ -480,12 +482,28 @@ def test_row_validator():
         if '_errors' in row:
             row['_errors'] = json.loads(row['_errors'])
     assert validated_data == [
-        {'release_date': datetime.date(2020, 1, 10), 'title': 'valid_1'},
-        {'release_date': datetime.date(2020, 1, 11), 'title': 'valid_2'},
-        {'_errors': {"row": {"release_date": "2020-31-11", "title": "invalid_1"},
-                     "errors": {"release_date": ["Not a valid date."]}}},
-        {'_errors': {"row": {"release_date": "2020-1-51", "title": "invalid_2"},
-                     "errors": {"release_date": ["Not a valid date."]}}}
+        {
+            'release_date': datetime.date(2020, 1, 10),
+            'timestamp': datetime.datetime(2021, 5, 5, 0, 0),
+            'title': 'valid_1'
+        },
+        {
+            'release_date': datetime.date(2020, 1, 11),
+            'timestamp': datetime.datetime(2021, 5, 5, 0, 0),
+            'title': 'valid_2'
+        },
+        {'_errors': {"row": {
+            "release_date": "2020-31-11",
+            'timestamp': '2021-05-05 00:00:00',
+            "title": "invalid_1"
+        },
+            "errors": {"release_date": ["Not a valid date."]}}},
+        {'_errors': {"row": {
+            "release_date": "2020-1-51",
+            'timestamp': '2021-05-05 00:00:00',
+            "title": "invalid_2"
+        },
+            "errors": {"release_date": ["Not a valid date."]}}}
     ]
 
 

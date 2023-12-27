@@ -26,7 +26,7 @@ if __name__ == '__main__':
         python_requires='>=3.4',
         install_requires=[
             'marshmallow~=3.2',
-            'marshmallow-oneofschema~=2.0',
+            'marshmallow-oneofschema~=3.0',
         ],
         extras_require={
             'dev': [
