@@ -16,3 +16,7 @@
 
 - Updated `marshmallow-oneofschema` dependency to version `~=3.0`
 - Updated schema unit test to use `Raw` field
+
+# v0.2.4
+
+- Fixed schema processing for marshmallow `Nested` field with `many=True` option.
