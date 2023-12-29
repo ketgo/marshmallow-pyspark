@@ -73,9 +73,12 @@ fabric.properties
 
 .idea/*
 
+# Python files and dirs to ignore
 venv/*
-
 *.egg-info
+*.pyc
+__pycache__/
+dist/
 
 .coverage
 

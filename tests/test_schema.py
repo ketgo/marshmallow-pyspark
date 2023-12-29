@@ -29,7 +29,9 @@ def test_create():
     (fields.Integer(), IntegerType()),
     (fields.Number(), DoubleType()),
     (fields.List(fields.String()), ArrayType(StringType())),
-    (fields.Nested(Schema.from_dict({"name": fields.String()})), StructType([StructField("name", StringType())]))
+    (fields.Nested(Schema.from_dict({"name": fields.String()})), StructType([StructField("name", StringType())])),
+    (fields.Nested(Schema.from_dict({"name": fields.String()}), many=True),
+     ArrayType(StructType([StructField("name", StringType())])))
 ])
 def test_spark_schema(ma_field, spark_field):
     class TestSchema(Schema):
@@ -110,6 +112,26 @@ def test_spark_schema(ma_field, spark_field):
             [
                 {"name": "invalid_1", "book": {"author": "Sam", "title": "Sam's Book", "cost": "32a"}},
             ]
+    ),
+    (
+            Schema.from_dict({
+                "name": fields.String(required=True),
+                "book": fields.Nested(
+                    Schema.from_dict({
+                        "author": fields.String(required=True),
+                        "title": fields.String(required=True),
+                        "cost": fields.Number(required=True)
+                    }),
+                    many=True
+                )
+            }),
+            [
+                {"name": "valid_1", "book": [{"author": "Sam", "title": "Sam's Book", "cost": "32.5"}]},
+            ],
+            [
+                {"name": "valid_1", "book": [{"author": "Sam", "title": "Sam's Book", "cost": 32.5}]},
+            ],
+            []
     )
 ])
 def test_validate_df(spark_session, schema, input_data, valid_rows, invalid_rows):

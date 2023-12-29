@@ -156,4 +156,4 @@ class NestedConverter(ConverterABC):
                     nullable=True
                 )
             )
-        return StructType(_fields)
+        return ArrayType(StructType(_fields)) if ma_field.many else StructType(_fields)
